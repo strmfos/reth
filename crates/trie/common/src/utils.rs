@@ -44,10 +44,48 @@ where
     }
 
     // Append collected new items, as well as any remaining from `other` which are necessarily also
-    // new, and sort if needed
-    if !to_insert.is_empty() || other_iter.peek().is_some() {
-        target.extend(to_insert);
-        target.extend(other_iter.cloned());
-        target.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+    // new. Since both `to_insert` and remaining `other_iter` came from the sorted `other` vector
+    // in order, they are already sorted relative to each other. We can merge them with the sorted
+    // target more efficiently than re-sorting the entire result.
+    if to_insert.is_empty() && other_iter.peek().is_none() {
+        // No new items, target is unchanged
+        return;
     }
+
+    let original_len = target.len();
+
+    // Collect all new items (both to_insert and remaining from other_iter)
+    // These are already in sorted order since they came from sorted `other`
+    to_insert.extend(other_iter.cloned());
+
+    // If target was empty, just replace it with the new items
+    if original_len == 0 {
+        *target = to_insert;
+        return;
+    }
+
+    // Merge the sorted target with the sorted new items
+    // This is O(n + m) instead of O((n+m) log (n+m))
+    let mut result = Vec::with_capacity(original_len + to_insert.len());
+    let mut target_idx = 0;
+    let mut insert_idx = 0;
+
+    while target_idx < original_len && insert_idx < to_insert.len() {
+        if target[target_idx].0 <= to_insert[insert_idx].0 {
+            result.push(target[target_idx].clone());
+            target_idx += 1;
+        } else {
+            result.push(to_insert[insert_idx].clone());
+            insert_idx += 1;
+        }
+    }
+
+    // Append remaining elements from whichever slice has items left
+    if target_idx < original_len {
+        result.extend_from_slice(&target[target_idx..]);
+    } else if insert_idx < to_insert.len() {
+        result.extend_from_slice(&to_insert[insert_idx..]);
+    }
+
+    *target = result;
 }
